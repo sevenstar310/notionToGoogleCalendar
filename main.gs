@@ -10,11 +10,9 @@ function syncNotionToGoogleCalendar() {
   } else {
     Logger.log(`カレンダー名: ${calendar.getName()}`);
   }
-  //Logger.log(notionEvents);
 
   notionEvents.forEach(event => {
     const start = new Date(event.start);
-    
     if (event.end != "なし"){
       const end = new Date(event.end);
       const existingEvent = calendar.getEvents(start, end).find(e => e.getTitle() === event.title);
@@ -41,11 +39,34 @@ function fetchNotionEvents() {
 
   const response = UrlFetchApp.fetch(url, options);
   const data = JSON.parse(response.getContentText());
-  
-  return data.results.map(page => ({
-    title: "不在",
-    start: page.properties["開始"].date.start,
-    end: page.properties["開始"].date.end || "なし"  // 終了がない場合
-  }));
-}
 
+  // 今日と1週間前のDateオブジェクトを用意
+  const today   = new Date();
+  const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  
+  // date が null のページを除外してから map
+  return data.results
+    .filter(page => {
+      const d = page.properties["開始"].date;
+      // 日付プロパティがない or start がない → 除外
+      if (!d || !d.start) {
+        return false;
+      }
+
+      const startDate = new Date(d.start);
+      // もし開始日が1週間以上前なら除外
+      if (startDate < weekAgo) {
+        Logger.log(`ページ ${page.id} は1週間以上前の (${d.start}) のためスキップ`);
+        return false;
+      }
+
+      return true;  // それ以外はマッピング対象
+    })
+    .map(page => {
+      const title = "不在";
+      const dateProp  = page.properties["開始"].date;
+      const start = new Date(dateProp.start);
+      const end =  page.properties["開始"].date.end || "なし" 
+      return { title, start, end };
+    });
+}
